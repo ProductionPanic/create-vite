@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/ProductionPanic/go-cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	bb "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -16,39 +18,39 @@ var vite_templates = [][]interface{}{
 	{"svelte", [][]string{
 		{"Javascript", "svelte"},
 		{"Typescript", "svelte-ts"},
-	}},
+	}, "Svelte is a radical new approach to building user interfaces. Whereas traditional frameworks like React and Vue do the bulk of their work in the browser, Svelte shifts that work into a compile step that happens when you build your app."},
 	{"react", [][]string{
 		{"Javascript", "react"},
 		{"Typescript", "react-ts"},
-	}},
+	}, "React is a JavaScript library for building user interfaces. It is maintained by Facebook and a community of individual developers and companies."},
 	{"vue", [][]string{
 		{"Javascript", "vue"},
 		{"Typescript", "vue-ts"},
-	}},
+	}, "Vue.js is a progressive framework for building user interfaces. It is designed from the ground up to be incrementally adoptable."},
 	{"preact", [][]string{
 		{"Javascript", "preact"},
 		{"Typescript", "preact-ts"},
-	}},
+	}, "Preact is a fast 3kB alternative to React with the same modern API. It provides the thinnest possible Virtual DOM abstraction on top of the DOM."},
 	{"solid", [][]string{
 		{"Javascript", "solid"},
 		{"Typescript", "solid-ts"},
-	}},
+	}, "Solid is a declarative JavaScript library for creating user interfaces. It does not use a virtual DOM. Instead, it uses fine-grained reactivity to only update the parts of the DOM that need to change."},
 	{"lit", [][]string{
 		{"Javascript", "lit"},
 		{"Typescript", "lit-ts"},
-	}},
+	}, "Lit is a simple library for building fast, lightweight web components. It is built on top of the Web Components standard, and is designed to work with all modern web browsers."},
 	{"vanilla", [][]string{
 		{"Javascript", "vanilla"},
 		{"Typescript", "vanilla-ts"},
-	}},
+	}, "Vanilla is a simple and minimalistic starter template for Vite. It is a great starting point for building your own custom framework or library."},
 	{"react-swc", [][]string{
 		{"Javascript", "react-swc"},
 		{"Typescript", "react-swc-ts"},
-	}},
+	}, "React SWC is a template that uses SWC for transforming your React code. SWC is a super-fast JavaScript/TypeScript compiler written in Rust. It is a drop-in replacement for Babel."},
 	{"qwik", [][]string{
 		{"Javascript", "qwik"},
 		{"Typescript", "qwik-ts"},
-	}},
+	}, "Qwik is a modern web framework that is designed to be fast, small, and easy to use. It is built on top of the Web Components standard, and is designed to work with all modern web browsers."},
 }
 var did_exit bool = false
 
@@ -91,8 +93,45 @@ func main() {
 		return
 	}
 	path := m2.(*selectPathModel).pathInput.Value()
+	if strings.HasPrefix(path, "~") {
+		home, _ := os.UserHomeDir()
+		path = strings.Replace(path, "~", home, 1)
+	}
 
-	fmt.Println("vite create", selectedTemplateValue, path)
+	path, e = filepath.Abs(path)
+	if e != nil {
+		panic(e)
+	}
+	parentDir := filepath.Dir(path)
+	_, e = os.Stat(parentDir)
+	if e != nil {
+		if os.IsNotExist(e) {
+			err := os.MkdirAll(parentDir, os.ModePerm)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	_ = os.Chdir(parentDir)
+
+	command := []string{"npm", "create", "vite@latest", filepath.Base(path), "--", "--template", selectedTemplateValue}
+	fmt.Println("Creating project...")
+	fmt.Println("Running command: ", command)
+
+	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	err := cmd.Run()
+	if err != nil {
+		panic(err)
+	}
+	cursor.ClearScreen()
+	cursor.Top()
+	cursor.LineStart()
+	fmt.Println(
+		lg.NewStyle().Foreground(lg.Color("#25b86e")).Render("Project created successfully!"),
+	)
 }
 
 type model struct {
@@ -117,6 +156,7 @@ func (m *model) Update(msg bb.Msg) (bb.Model, bb.Cmd) {
 	case bb.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
+			did_exit = true
 			return m, bb.Quit
 		case "up", "k":
 			if m.cursor > 0 {
@@ -162,10 +202,12 @@ func (m *model) Update(msg bb.Msg) (bb.Model, bb.Cmd) {
 	return m, nil
 }
 
+var bg = lg.NewStyle().Background(lg.Color("#131313"))
+
 func (m *model) View() string {
 	is_sub_menu := m.selected_head_template >= 0
 	var s []string
-	header := lg.NewStyle().Bold(true).PaddingBottom(1).Foreground(lg.Color("#3399ff"))
+	header := lg.NewStyle().Bold(true).Foreground(lg.Color("#3399ff"))
 	if is_sub_menu {
 		items := vite_templates[m.selected_head_template][1].([][]string)
 		s = append(s, capitalize(header.Render(vite_templates[m.selected_head_template][0].(string))))
@@ -178,7 +220,7 @@ func (m *model) View() string {
 			}
 		}
 	} else {
-		s = append(s, capitalize(header.Render("Vite Templates")))
+		s = append(s, capitalize(header.Copy().PaddingBottom(1).Render("Vite Templates")))
 		for i, item := range vite_templates {
 			item[0] = capitalize(item[0].(string))
 			if i == m.cursor {
@@ -202,11 +244,29 @@ func (m *model) View() string {
 		longest = int(math.Max(float64(longest), float64(lg.Width(item))))
 	}
 	for i, item := range s {
-		s[i] = lg.NewStyle().Width(longest).Render(item)
+		s[i] = lg.NewStyle().Width(longest).Inherit(bg).Render(item)
+
 	}
-	app := lg.NewStyle().Border(lg.InnerHalfBlockBorder()).Background(lg.Color("#131313")).MaxWidth(w-w*10/9).Padding(1, 2).BorderForeground(lg.Color("#25b86e")).Width(longest + 2).Render(lg.JoinVertical(lg.Left, s...))
+	content := lg.JoinVertical(lg.Left, s...)
+	active_item := m.get_active_item()
+	if active_item >= 0 {
+		description := vite_templates[active_item][2].(string)
+		descriptionStyle := lg.NewStyle().Foreground(lg.Color("#9e9e9e")).Faint(true).Width(longest)
+		content = lg.JoinHorizontal(lg.Top, content, descriptionStyle.Height(lg.Height(content)).Inherit(bg).Render(description))
+
+	}
+	app := lg.NewStyle().Inherit(bg).Border(lg.InnerHalfBlockBorder()).MaxWidth(w-w*10/9).Padding(1, 2).BorderForeground(lg.Color("#25b86e")).Width(longest*2 + 6).Render(content)
 
 	return lg.Place(w, h, lg.Center, lg.Center, app)
+}
+
+func (m *model) get_active_item() int {
+	if m.selected_head_template >= 0 {
+		return m.selected_head_template
+	} else {
+		return m.cursor
+	}
+	return -1
 }
 
 func capitalize(str string) string {

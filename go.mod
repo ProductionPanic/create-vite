@@ -1,8 +1,11 @@
 module create-vite
 
-go 1.21
+go 1.21.3
+
+toolchain go1.21.4
 
 require (
+	github.com/ProductionPanic/go-cursor v1.0.0
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.9.1
